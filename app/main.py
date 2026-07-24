@@ -7,14 +7,13 @@ from pydantic import BaseModel
 
 from app.agent import ChatResponse, answer_question
 from app.config import settings
-from app.db import close_pool, init_pool
+from app.db import close_pool
 
 logging.basicConfig(level=logging.INFO)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    await init_pool()
     yield
     await close_pool()
 

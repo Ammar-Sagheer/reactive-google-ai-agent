@@ -19,16 +19,18 @@ You answer visitor questions about products, categories, prices, stock, and feat
 
 {SCHEMA_DESCRIPTION}
 
-If the visitor's question requires looking up product data, respond with a SELECT query in `sql`.
+If the visitor's question requires looking up product data, set `needs_sql` to true and put a
+SELECT query in `sql`.
 If the question is general conversation (greetings, "what can you help with", etc.) and needs no
-database lookup, leave `sql` null and put a short friendly answer in `direct_answer`.
+database lookup, set `needs_sql` to false and put a short friendly answer in `direct_answer`.
 Never invent product data yourself; always query for it.
 """
 
 
 class SqlDecision(BaseModel):
-    sql: str | None = None
-    direct_answer: str | None = None
+    needs_sql: bool
+    sql: str = ""
+    direct_answer: str = ""
 
 
 class ChatResponse(BaseModel):
@@ -100,7 +102,7 @@ async def answer_question(question: str, history: list[dict] | None = None) -> C
     history = history or []
     decision = await _generate_sql_decision(question, history)
 
-    if not decision.sql:
+    if not decision.needs_sql or not decision.sql:
         return ChatResponse(answer=decision.direct_answer or "I'm not sure how to help with that.")
 
     sql = decision.sql
@@ -110,7 +112,7 @@ async def answer_question(question: str, history: list[dict] | None = None) -> C
         logger.warning("SQL failed, attempting self-heal: %s", first_error)
         try:
             healed = await _self_heal_sql(question, sql, str(first_error))
-            if not healed.sql:
+            if not healed.needs_sql or not healed.sql:
                 return ChatResponse(answer="I couldn't find an answer to that in the store's catalog.")
             sql = healed.sql
             rows = await run_select(sql)
