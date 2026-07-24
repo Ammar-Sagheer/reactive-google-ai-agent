@@ -104,7 +104,7 @@ async def answer_question(question: str, history: list[dict] | None = None) -> C
     history = history or []
 
     query_embedding = await semantic_cache.embed(_client, question)
-    cached = semantic_cache.find(query_embedding)
+    cached = semantic_cache.find(query_embedding, question)
     if cached is not None:
         return ChatResponse(
             answer=cached.answer,

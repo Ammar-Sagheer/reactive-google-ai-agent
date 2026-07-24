@@ -1,7 +1,10 @@
+import logging
 import time
 from dataclasses import dataclass, field
 
 from google.genai import types
+
+logger = logging.getLogger("semantic_cache")
 
 EMBEDDING_MODEL = "gemini-embedding-2"
 EMBEDDING_DIMENSIONS = 768
@@ -43,7 +46,7 @@ async def embed(client, text: str) -> list[float]:
     return result.embeddings[0].values
 
 
-def find(query_embedding: list[float]) -> CacheEntry | None:
+def find(query_embedding: list[float], question: str = "") -> CacheEntry | None:
     best_entry = None
     best_score = 0.0
     for entry in _cache:
@@ -51,8 +54,18 @@ def find(query_embedding: list[float]) -> CacheEntry | None:
         if score > best_score:
             best_score = score
             best_entry = entry
+
     if best_entry and best_score >= SIMILARITY_THRESHOLD:
+        logger.info(
+            "CACHE HIT (score=%.4f >= %.2f): %r matched cached %r",
+            best_score, SIMILARITY_THRESHOLD, question, best_entry.question,
+        )
         return best_entry
+
+    logger.info(
+        "CACHE MISS (best score=%.4f, threshold=%.2f, %d entries): %r",
+        best_score, SIMILARITY_THRESHOLD, len(_cache), question,
+    )
     return None
 
 
@@ -68,3 +81,4 @@ def store(
     )
     if len(_cache) > MAX_ENTRIES:
         _cache.pop(0)
+    logger.info("CACHE STORE: %r (cache size now %d)", question, len(_cache))
