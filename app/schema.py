@@ -34,6 +34,9 @@ Rules:
 - Only reference the three tables above. No other tables exist for you.
 - Use sale_price when present as the effective price, otherwise price.
 - Always add a reasonable LIMIT (<=20) unless the user asks for a count/aggregate.
+- Always include a product's slug column in SELECT queries that return products, so it can be
+  linked to. To link a visitor to a product page, build the path /products/<slug>. Never present
+  product_images.image_url as a link to the product itself — that is only a picture, not a page.
 """
 
 ALLOWED_TABLES = {"products", "categories", "product_images"}

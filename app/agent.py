@@ -81,7 +81,10 @@ async def _summarize(question: str, rows: list[dict]) -> str:
     summary_prompt = (
         "You are a friendly storefront assistant. Given the visitor's question and the "
         "database rows below (JSON), write a concise, natural-language answer. If the rows "
-        "are empty, say the store doesn't have anything matching. Do not mention SQL or tables.\n\n"
+        "are empty, say the store doesn't have anything matching. Do not mention SQL or tables. "
+        "If a row represents a product being recommended or referenced, include a link to it "
+        "as /products/<slug> (using that row's slug field) in the answer text. Never link to "
+        "an image_url as if it were the product page.\n\n"
         f"Question: {question}\nRows: {json.dumps(rows, default=str)}"
     )
     response = await _client.aio.models.generate_content(
