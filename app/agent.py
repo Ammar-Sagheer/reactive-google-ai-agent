@@ -5,6 +5,7 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel
 
+from app import semantic_cache
 from app.config import settings
 from app.db import run_select
 from app.schema import SCHEMA_DESCRIPTION
@@ -37,6 +38,7 @@ class ChatResponse(BaseModel):
     answer: str
     sql_used: str | None = None
     rows: list[dict] | None = None
+    from_cache: bool = False
 
 
 async def _generate_sql_decision(question: str, history: list[dict]) -> SqlDecision:
@@ -100,10 +102,23 @@ def _history_to_contents(history: list[dict]) -> list[types.Content]:
 
 async def answer_question(question: str, history: list[dict] | None = None) -> ChatResponse:
     history = history or []
+
+    query_embedding = await semantic_cache.embed(_client, question)
+    cached = semantic_cache.find(query_embedding)
+    if cached is not None:
+        return ChatResponse(
+            answer=cached.answer,
+            sql_used=cached.sql_used,
+            rows=cached.rows,
+            from_cache=True,
+        )
+
     decision = await _generate_sql_decision(question, history)
 
     if not decision.needs_sql or not decision.sql:
-        return ChatResponse(answer=decision.direct_answer or "I'm not sure how to help with that.")
+        response = ChatResponse(answer=decision.direct_answer or "I'm not sure how to help with that.")
+        semantic_cache.store(question, query_embedding, response.answer, response.sql_used, response.rows)
+        return response
 
     sql = decision.sql
     try:
@@ -113,14 +128,17 @@ async def answer_question(question: str, history: list[dict] | None = None) -> C
         try:
             healed = await _self_heal_sql(question, sql, str(first_error))
             if not healed.needs_sql or not healed.sql:
+                # Not cached: a fixable rephrase later shouldn't be stuck with this answer.
                 return ChatResponse(answer="I couldn't find an answer to that in the store's catalog.")
             sql = healed.sql
             rows = await run_select(sql)
         except (UnsafeQueryError, Exception) as second_error:  # noqa: BLE001
             logger.error("Self-heal failed: %s", second_error)
+            # Not cached: a transient failure shouldn't be locked in as the answer.
             return ChatResponse(
                 answer="Sorry, I couldn't look that up right now. Try rephrasing your question."
             )
 
     answer_text = await _summarize(question, rows)
+    semantic_cache.store(question, query_embedding, answer_text, sql, rows)
     return ChatResponse(answer=answer_text, sql_used=sql, rows=rows)

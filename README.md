@@ -5,9 +5,22 @@ question, it generates a SQL query (Gemini), runs it read-only against the store
 Postgres database through a restricted `chatbot_readonly` role, and returns a natural-language
 answer.
 
-This is the minimal-slice version: NL question -> SQL generation -> execute -> self-heal once on
-error -> summarize. No caching, RAG, voice, or tracing yet — those can be layered on once this
-core loop is proven out.
+This is the minimal-slice version: NL question -> semantic cache check -> SQL generation ->
+execute -> self-heal once on error -> summarize -> cache the answer. No RAG, voice, or tracing
+yet — those can be layered on once this core loop is proven out.
+
+## Semantic cache
+
+Before calling Gemini, the question is embedded (`gemini-embedding-2`) and compared against past
+questions by cosine similarity (`app/semantic_cache.py`). A match at or above 0.87 similarity
+returns the cached answer directly — no SQL generation, no DB query, no summarization call. Only
+genuinely successful answers are cached; error/fallback responses (self-heal failed, no SQL
+produced) are never cached, so a transient failure can't get "stuck" as the answer to a question
+that would otherwise succeed.
+
+The cache is in-memory per process — cleared on restart, not shared across multiple instances.
+That's fine for this single-instance test deployment; swap in Redis + a vector index if this ever
+runs behind more than one instance.
 
 ## Security model
 
